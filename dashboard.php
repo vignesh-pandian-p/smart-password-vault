@@ -176,18 +176,18 @@ $result = $stmt->get_result();
         function applyTheme() {
             const theme = getCookie('theme');
             if (theme === 'dark') {
-                html.classList.add('dark');
+                html.className = 'dark';
             } else {
-                html.classList.remove('dark');
+                html.className = '';
             }
         }
 
         darkModeToggle.addEventListener('click', () => {
             if (html.classList.contains('dark')) {
-                html.classList.remove('dark');
+                html.className = '';
                 setCookie('theme', 'light', 365);
             } else {
-                html.classList.add('dark');
+                html.className = 'dark';
                 setCookie('theme', 'dark', 365);
             }
         });

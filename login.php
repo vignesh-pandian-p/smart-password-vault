@@ -93,9 +93,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         function applyTheme() {
             const theme = getCookie('theme');
             if (theme === 'dark') {
-                document.documentElement.classList.add('dark');
+                document.documentElement.className = 'dark';
             } else {
-                document.documentElement.classList.remove('dark');
+                document.documentElement.className = '';
             }
         }
 
