@@ -88,11 +88,18 @@ $result = $stmt->get_result();
             <!-- Saved Passwords Table -->
             <div class="md:col-span-2">
                 <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md">
-                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200 flex items-center">
                             <i data-lucide="list" class="w-5 h-5 mr-2"></i>
                             Saved Passwords
                         </h3>
+                        <div class="relative">
+                            <input type="text" id="search-passwords" placeholder="Search..."
+                                   class="pl-10 pr-4 py-2 w-64 bg-white dark:bg-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i data-lucide="search" class="w-5 h-5 text-gray-400"></i>
+                            </div>
+                        </div>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -106,9 +113,9 @@ $result = $stmt->get_result();
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody id="password-table-body" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 <?php while ($row = $result->fetch_assoc()): ?>
-                                <tr>
+                                <tr class="password-row">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-200"><?= htmlspecialchars($row['site_name']) ?></td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"><?= htmlspecialchars($row['site_username']) ?></td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-mono"><?= substr($row['encrypted_password'], 0, 20) ?>...</td>
@@ -140,26 +147,70 @@ $result = $stmt->get_result();
     </main>
 
     <script>
-      lucide.createIcons();
+        lucide.createIcons();
 
-      const darkModeToggle = document.getElementById('dark-mode-toggle');
-      const html = document.documentElement;
+        const darkModeToggle = document.getElementById('dark-mode-toggle');
+        const html = document.documentElement;
 
-      // Check for saved theme preference
-      if (document.cookie.includes('theme=dark')) {
-          html.classList.add('dark');
-      }
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (value || "") + expires + "; path=/";
+        }
 
-      darkModeToggle.addEventListener('click', () => {
-          html.classList.toggle('dark');
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
 
-          // Save theme preference to cookie
-          if (html.classList.contains('dark')) {
-              document.cookie = "theme=dark;path=/;max-age=31536000"; // Expires in 1 year
-          } else {
-              document.cookie = "theme=light;path=/;max-age=31536000";
-          }
-      });
+        function applyTheme() {
+            const theme = getCookie('theme');
+            if (theme === 'dark') {
+                html.classList.add('dark');
+            } else {
+                html.classList.remove('dark');
+            }
+        }
+
+        darkModeToggle.addEventListener('click', () => {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                setCookie('theme', 'light', 365);
+            } else {
+                html.classList.add('dark');
+                setCookie('theme', 'dark', 365);
+            }
+        });
+
+        applyTheme();
+
+        const searchInput = document.getElementById('search-passwords');
+        const tableBody = document.getElementById('password-table-body');
+        const rows = tableBody.getElementsByClassName('password-row');
+
+        searchInput.addEventListener('keyup', (e) => {
+            const query = e.target.value.toLowerCase();
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const siteName = row.cells[0].innerText.toLowerCase();
+                const username = row.cells[1].innerText.toLowerCase();
+                if (siteName.includes(query) || username.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+        });
     </script>
 </body>
 </html>
