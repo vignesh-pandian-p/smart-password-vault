@@ -1,93 +1,167 @@
 <?php
+session_start();
 include 'db.php';
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $username = trim($_POST['username']);
-    $password = password_hash($_POST['password'], PASSWORD_BCRYPT);
+// If already logged in, redirect to dashboard
+if (isset($_SESSION['user_id'])) {
+    header("Location: dashboard.php");
+    exit;
+}
 
-    $stmt = $conn->prepare("INSERT INTO users (username, password) VALUES (?, ?)");
-    $stmt->bind_param("ss", $username, $password);
+$error = null;
 
-    if ($stmt->execute()) {
-        header("Location: login.php");
-        exit;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = trim($_POST['username'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if (empty($username) || empty($password)) {
+        $error = "All fields are required.";
+    } elseif (strlen($username) < 3) {
+        $error = "Username must be at least 3 characters long.";
+    } elseif (strlen($password) < 6) {
+        $error = "Password must be at least 6 characters long.";
     } else {
-        $error = "Username already exists or error occurred.";
+        $hashed = password_hash($password, PASSWORD_BCRYPT);
+        $stmt = $conn->prepare("INSERT INTO users (username, password) VALUES (?, ?)");
+        $stmt->bind_param("ss", $username, $hashed);
+
+        if ($stmt->execute()) {
+            $_SESSION['flash_message'] = "Account created successfully! Please login.";
+            $_SESSION['flash_type'] = "success";
+            header("Location: login.php");
+            exit;
+        } else {
+            if ($conn->errno == 1062) {
+                $error = "This username is already taken. Please choose another one.";
+            } else {
+                $error = "An unexpected error occurred. Please try again.";
+            }
+        }
+        $stmt->close();
     }
 }
+
+$page_title = "Create Account";
+include 'includes/header.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - Smart Password Vault</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-</head>
-<body class="bg-gray-100 dark:bg-gray-900 flex items-center justify-center h-screen">
-    <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-        <div class="flex justify-center mb-6">
-            <h1 class="text-2xl font-bold text-gray-700 dark:text-gray-200 flex items-center">
-                <i data-lucide="lock" class="w-6 h-6 mr-2"></i>
-                Smart Password Vault
-            </h1>
-        </div>
-        <h2 class="text-xl font-semibold text-center text-gray-600 dark:text-gray-300 mb-4">Register</h2>
+<main class="min-h-screen flex flex-col justify-between bg-slate-50 py-8 px-4 sm:px-6">
 
-        <?php if (isset($error)): ?>
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-                <span class="block sm:inline"><?php echo $error; ?></span>
+    <!-- Top Navigation Link -->
+    <div class="max-w-md w-full mx-auto">
+        <a href="index.php" class="inline-flex items-center space-x-1.5 text-slate-500 hover:text-indigo-600 text-xs font-medium transition-colors">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            <span>Back to Home</span>
+        </a>
+    </div>
+
+    <!-- Register Card -->
+    <div class="w-full max-w-md mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm p-8 sm:p-10 my-auto">
+        
+        <!-- Brand Header inside Card -->
+        <div class="text-center mb-8">
+            <a href="index.php" class="inline-flex items-center gap-2.5 mb-3 group">
+                <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+                    <i data-lucide="shield-check" class="w-5 h-5"></i>
+                </div>
+                <span class="font-bold text-xl text-slate-900 tracking-tight">Smart Vault</span>
+            </a>
+            <h1 class="text-lg font-bold text-slate-900">Create your account</h1>
+            <p class="text-xs text-slate-500 mt-1">Set up a local personal password vault</p>
+        </div>
+
+        <?php if ($error): ?>
+            <div class="bg-red-50 border border-red-200 text-red-700 px-3.5 py-2.5 rounded-xl mb-6 flex items-start gap-2.5 text-xs">
+                <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0 text-red-500 mt-0.5"></i>
+                <span class="font-medium"><?= htmlspecialchars($error) ?></span>
             </div>
         <?php endif; ?>
 
-        <form method="post" class="space-y-4">
+        <form method="post" action="register.php" class="space-y-4">
             <div>
-                <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
-                <input type="text" id="username" name="username" placeholder="Enter Username" required
-                       class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <label for="username" class="block text-xs font-semibold text-slate-700 mb-1.5">Username</label>
+                <input type="text" id="username" name="username" placeholder="Choose a username" required autofocus
+                    class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors">
             </div>
+
             <div>
-                <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                <input type="password" id="password" name="password" placeholder="Enter Password" required
-                       class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <label for="password" class="block text-xs font-semibold text-slate-700 mb-1.5">Master Password</label>
+                <div class="relative">
+                    <input type="password" id="password" name="password" placeholder="Create password" required
+                        class="w-full pl-3.5 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors">
+                    <button type="button" id="toggle-password-btn" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors" title="Toggle visibility">
+                        <i data-lucide="eye" id="toggle-password-icon" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                
+                <!-- Strength Meter -->
+                <div class="mt-2">
+                    <div class="flex justify-between items-center text-[11px] text-slate-500 mb-1">
+                        <span>Strength: <strong id="strength-label" class="font-semibold text-slate-600">None</strong></span>
+                        <span class="text-[11px] text-slate-400">Min 6 characters</span>
+                    </div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div id="strength-bar" class="h-full w-0 transition-all duration-300 bg-red-500 rounded-full"></div>
+                    </div>
+                </div>
             </div>
+
             <button type="submit"
-                    class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                Register
+                class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mt-2">
+                Create Account
             </button>
         </form>
 
-        <p class="text-sm text-center text-gray-600 dark:text-gray-400 mt-4">
-            Already have an account? <a href="login.php" class="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">Login here</a>
-        </p>
+        <div class="mt-6 text-center border-t border-slate-100 pt-5">
+            <p class="text-xs text-slate-500">
+                Already have an account? 
+                <a href="login.php" class="font-semibold text-indigo-600 hover:underline">
+                    Sign in
+                </a>
+            </p>
+        </div>
     </div>
 
-    <script>
-        lucide.createIcons();
+    <!-- Footer -->
+    <div class="text-center text-xs text-slate-400 max-w-md w-full mx-auto">
+        &copy; <?= date('Y') ?> Smart Password Vault. All rights reserved.
+    </div>
+</main>
 
-        function getCookie(name) {
-            const nameEQ = name + "=";
-            const ca = document.cookie.split(';');
-            for(let i = 0; i < ca.length; i++) {
-                let c = ca[i];
-                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+<script src="assets/js/lucide.min.js"></script>
+<script src="assets/js/generator.js"></script>
+<script>
+    if (window.lucide) lucide.createIcons();
+    const toggleBtn = document.getElementById('toggle-password-btn');
+    const passInput = document.getElementById('password');
+    const passIcon = document.getElementById('toggle-password-icon');
+    const strengthBar = document.getElementById('strength-bar');
+    const strengthLabel = document.getElementById('strength-label');
+
+    if (toggleBtn && passInput) {
+        toggleBtn.addEventListener('click', () => {
+            const isPassword = passInput.getAttribute('type') === 'password';
+            passInput.setAttribute('type', isPassword ? 'text' : 'password');
+            passIcon.setAttribute('data-lucide', isPassword ? 'eye-off' : 'eye');
+            lucide.createIcons();
+        });
+    }
+
+    if (passInput && strengthBar && window.PasswordGenerator) {
+        passInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if (!val) {
+                strengthBar.style.width = '0%';
+                strengthLabel.innerText = 'None';
+                strengthLabel.className = 'font-semibold text-slate-600';
+                return;
             }
-            return null;
-        }
-
-        function applyTheme() {
-            const theme = getCookie('theme');
-            if (theme === 'dark') {
-                document.documentElement.classList.add('dark');
-            } else {
-                document.documentElement.classList.remove('dark');
-            }
-        }
-
-        applyTheme();
-    </script>
+            const res = window.PasswordGenerator.evaluateStrength(val);
+            strengthBar.style.width = res.percent + '%';
+            strengthBar.className = `h-full rounded-full transition-all duration-300 ${res.colorClass}`;
+            strengthLabel.innerText = res.label;
+        });
+    }
+</script>
 </body>
 </html>

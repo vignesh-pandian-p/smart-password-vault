@@ -1,126 +1,148 @@
 <?php
 session_start();
 include 'db.php';
+include 'includes/crypto.php';
 
 if (!isset($_SESSION['user_id'])) {
+    if (isset($_POST['format']) && $_POST['format'] === 'json') {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Unauthorized']);
+        exit;
+    }
     header("Location: login.php");
     exit;
 }
 
-function decrypt_password($encrypted) {
-    $key = "my_secret_encryption_key_123";
-    $iv = "1234567890123456";
-    return openssl_decrypt($encrypted, "AES-256-CBC", $key, 0, $iv);
-}
-
 $decrypted_password = null;
+$site_name = null;
+$site_username = null;
 $error = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['vault_id'])) {
-    $vault_id = $_POST['vault_id'];
+    $vault_id = intval($_POST['vault_id']);
     $user_id = $_SESSION['user_id'];
 
-    $stmt = $conn->prepare("SELECT site_name, encrypted_password FROM vault WHERE id = ? AND user_id = ?");
+    $stmt = $conn->prepare("SELECT site_name, site_username, encrypted_password FROM vault WHERE id = ? AND user_id = ?");
     $stmt->bind_param("ii", $vault_id, $user_id);
     $stmt->execute();
     $stmt->store_result();
 
     if ($stmt->num_rows === 1) {
-        $stmt->bind_result($site_name, $encrypted);
+        $stmt->bind_result($fetched_site_name, $fetched_site_username, $encrypted);
         $stmt->fetch();
+        $site_name = $fetched_site_name;
+        $site_username = $fetched_site_username;
         $decrypted_password = decrypt_password($encrypted);
+
+        if ($decrypted_password === null) {
+            $error = "Failed to decrypt password. The record may be corrupted.";
+        }
     } else {
-        $error = "Entry not found or you don't have permission to view it.";
+        $error = "Entry not found or access denied.";
     }
+
+    $stmt->close();
 } else {
     header("Location: dashboard.php");
     exit;
 }
+
+// Return JSON if requested by AJAX
+if (isset($_POST['format']) && $_POST['format'] === 'json') {
+    header('Content-Type: application/json');
+    if ($error === null && $decrypted_password !== null) {
+        echo json_encode([
+            'success' => true,
+            'vault_id' => $vault_id,
+            'site_name' => $site_name,
+            'site_username' => $site_username,
+            'decrypted_password' => $decrypted_password
+        ]);
+    } else {
+        echo json_encode([
+            'success' => false,
+            'error' => $error ?? 'Unknown error'
+        ]);
+    }
+    exit;
+}
+
+$page_title = "Decrypted Credential";
+include 'includes/header.php';
+include 'includes/navbar.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Decrypted Password - Smart Password Vault</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-</head>
-<body class="bg-gray-100 dark:bg-gray-900 flex items-center justify-center h-screen">
+<main class="flex-grow flex items-center justify-center py-12 px-4 sm:px-6">
+    <div class="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-slate-200 p-8 animate-fade-in relative">
+        <a href="dashboard.php" class="inline-flex items-center space-x-1.5 text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors mb-6">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            <span>Back to Dashboard</span>
+        </a>
 
-    <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-        <div class="flex justify-center mb-6">
-            <h1 class="text-2xl font-bold text-gray-700 dark:text-gray-200 flex items-center">
-                <i data-lucide="lock" class="w-6 h-6 mr-2"></i>
-                Smart Password Vault
-            </h1>
+        <div class="text-center mb-6">
+            <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-3">
+                <i data-lucide="key-round" class="w-6 h-6"></i>
+            </div>
+            <h1 class="text-xl font-bold text-slate-900">Decrypted Credential</h1>
+            <p class="text-xs text-slate-500 mt-1">Safely view your stored login</p>
         </div>
 
         <?php if ($decrypted_password !== null): ?>
-            <h2 class="text-xl font-semibold text-center text-gray-600 dark:text-gray-300 mb-4">Decrypted Password for <?= htmlspecialchars($site_name) ?></h2>
+            <div class="space-y-4 bg-slate-50 rounded-xl p-5 border border-slate-200 relative overflow-hidden">
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Website</label>
+                    <div class="text-sm font-semibold text-slate-900 flex items-center space-x-2">
+                        <i data-lucide="globe" class="w-4 h-4 text-indigo-600"></i>
+                        <span><?= htmlspecialchars($site_name) ?></span>
+                    </div>
+                </div>
 
-            <div class="relative p-4 bg-gray-100 dark:bg-gray-700 rounded-md mb-4">
-                <p id="password-to-copy" class="text-lg font-mono text-gray-800 dark:text-gray-200 break-all"><?= htmlspecialchars($decrypted_password) ?></p>
-                <button id="copy-button" class="absolute top-2 right-2 p-2 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400" title="Copy to Clipboard">
-                    <i data-lucide="copy" class="w-5 h-5"></i>
-                </button>
+                <?php if (!empty($site_username)): ?>
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Username / Email</label>
+                    <div class="text-sm text-slate-700 flex items-center justify-between">
+                        <span id="site-username-text" class="font-mono"><?= htmlspecialchars($site_username) ?></span>
+                        <button type="button" onclick="copyToClipboard('<?= htmlspecialchars(addslashes($site_username)) ?>', 'Username copied!')" class="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-slate-200 transition-colors" title="Copy Username">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Decrypted Password</label>
+                    <div class="flex items-center justify-between bg-white p-3 rounded-lg border border-slate-200">
+                        <span id="decrypted-password-text" class="font-mono text-sm font-semibold text-indigo-600 select-all break-all"><?= htmlspecialchars($decrypted_password) ?></span>
+                        <button type="button" onclick="copyToClipboard('<?= htmlspecialchars(addslashes($decrypted_password)) ?>', 'Password copied!')" class="ml-2 p-1.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0" title="Copy Password">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div class="text-center text-sm text-green-600 dark:text-green-400 mb-4" id="copy-success" style="display: none;">
-                Password copied to clipboard!
+            <div class="mt-6 flex justify-end">
+                <a href="dashboard.php" class="w-full text-center py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-xl shadow-sm transition-colors">
+                    Done & Return to Dashboard
+                </a>
             </div>
-
         <?php else: ?>
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-                <span class="block sm:inline"><?= $error ?></span>
+            <div class="p-4 rounded-xl bg-red-50 border border-red-200 text-center">
+                <i data-lucide="alert-triangle" class="w-6 h-6 text-red-500 mx-auto mb-2"></i>
+                <p class="text-xs font-medium text-red-700"><?= htmlspecialchars($error) ?></p>
+                <a href="dashboard.php" class="inline-block mt-3 text-xs font-semibold text-indigo-600 hover:underline">Return to Dashboard</a>
             </div>
         <?php endif; ?>
-
-        <a href="dashboard.php" class="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
-            Back to Dashboard
-        </a>
     </div>
+</main>
 
-    <script>
-        lucide.createIcons();
-
-        function getCookie(name) {
-            const nameEQ = name + "=";
-            const ca = document.cookie.split(';');
-            for(let i = 0; i < ca.length; i++) {
-                let c = ca[i];
-                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
-            }
-            return null;
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const passElem = document.getElementById('decrypted-password-text');
+        if (passElem && window.animateTextScramble) {
+            const rawText = passElem.innerText;
+            animateTextScramble(passElem, rawText, 500);
         }
+    });
+</script>
 
-        function applyTheme() {
-            const theme = getCookie('theme');
-            if (theme === 'dark') {
-                document.documentElement.classList.add('dark');
-            } else {
-                document.documentElement.classList.remove('dark');
-            }
-        }
-
-        applyTheme();
-
-        const copyButton = document.getElementById('copy-button');
-        if (copyButton) {
-            copyButton.addEventListener('click', () => {
-                const password = document.getElementById('password-to-copy').innerText;
-                navigator.clipboard.writeText(password).then(() => {
-                    const successMessage = document.getElementById('copy-success');
-                    successMessage.style.display = 'block';
-                    setTimeout(() => {
-                        successMessage.style.display = 'none';
-                    }, 2000);
-                });
-            });
-        }
-    </script>
-</body>
-</html>
+<?php include 'includes/footer.php'; ?>
